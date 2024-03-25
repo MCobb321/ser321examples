@@ -8,6 +8,8 @@ You can also do some other simple GET requests:
 4) /multiply?num1=3&num2=4 multiplies the two inputs and responses with the result
 5) /github?query=users/amehlhase316/repos (or other GitHub repo owners) will lead to receiving
    JSON which will for now only be printed in the console. See the todo below
+6)/reverse?str1=string1&str2=string2 will reverse the two inputs and respond with the result
+7)/larger?num1=123&num2=321 will determine which number is larger or if they're equal
 
 The reading of the request is done "manually", meaning no library that helps making things a 
 little easier is used. This is done so you see exactly how to pars the request and 
@@ -15,6 +17,7 @@ write a response back
 */
 
 package funHttpServer;
+
 
 import java.io.*;
 import java.net.*;
@@ -25,6 +28,7 @@ import java.util.Random;
 import java.util.Map;
 import java.util.LinkedHashMap;
 import java.nio.charset.Charset;
+import org.json.*;
 
 class WebServer {
   public static void main(String args[]) {
@@ -33,6 +37,7 @@ class WebServer {
 
   /**
    * Main thread
+   *
    * @param port to listen on
    */
   public WebServer(int port) {
@@ -82,6 +87,7 @@ class WebServer {
 
   /**
    * Reads in socket stream and generates a response
+   *
    * @param inStream HTTP input stream from socket
    * @return the byte encoded HTTP response
    */
@@ -110,7 +116,7 @@ class WebServer {
         // find end of header("\n\n")
         if (line == null || line.equals(""))
           done = true;
-        // parse GET format ("GET <path> HTTP/1.1")
+          // parse GET format ("GET <path> HTTP/1.1")
         else if (line.startsWith("GET")) {
           int firstSpace = line.indexOf(" ");
           int secondSpace = line.indexOf(" ", firstSpace + 1);
@@ -194,50 +200,159 @@ class WebServer {
             builder.append("File not found: " + file);
           }
         } else if (request.contains("multiply?")) {
-          // This multiplies two numbers, there is NO error handling, so when
-          // wrong data is given this just crashes
+          try {
+            // This multiplies two numbers
 
-          Map<String, String> query_pairs = new LinkedHashMap<String, String>();
-          // extract path parameters
-          query_pairs = splitQuery(request.replace("multiply?", ""));
+            Map<String, String> query_pairs = new LinkedHashMap<String, String>();
+            // extract path parameters
+            query_pairs = splitQuery(request.replace("multiply?", ""));
 
-          // extract required fields from parameters
-          Integer num1 = Integer.parseInt(query_pairs.get("num1"));
-          Integer num2 = Integer.parseInt(query_pairs.get("num2"));
+            // extract required fields from parameters
 
-          // do math
-          Integer result = num1 * num2;
+            Integer num1 = Integer.parseInt(query_pairs.get("num1"));
+            Integer num2 = Integer.parseInt(query_pairs.get("num2"));
 
-          // Generate response
-          builder.append("HTTP/1.1 200 OK\n");
-          builder.append("Content-Type: text/html; charset=utf-8\n");
-          builder.append("\n");
-          builder.append("Result is: " + result);
 
-          // TODO: Include error handling here with a correct error code and
-          // a response that makes sense
+            // do math
+            Integer result = num1 * num2;
 
+            // Generate response
+            builder.append("HTTP/1.1 200 OK\n");
+            builder.append("Content-Type: text/html; charset=utf-8\n");
+            builder.append("\n");
+            builder.append("Result is: " + result);
+
+            // Invalid data entered exception
+          } catch (NumberFormatException nfs) {
+            builder.append("HTTP/1.1 406 Not Acceptable\n");
+            builder.append("Content-Type: text/html; charset=utf-8\n");
+            builder.append("\n");
+            builder.append("Invalid Data Entered");
+          } catch (IndexOutOfBoundsException nfs) {
+            builder.append("HTTP/1.1 400 Bad Request\n");
+            builder.append("Content-Type: text/html; charset=utf-8\n");
+            builder.append("\n");
+            builder.append("Unable to resolve input");
+          }
         } else if (request.contains("github?")) {
-          // pulls the query from the request and runs it with GitHub's REST API
-          // check out https://docs.github.com/rest/reference/
-          //
-          // HINT: REST is organized by nesting topics. Figure out the biggest one first,
-          //     then drill down to what you care about
-          // "Owner's repo is named RepoName. Example: find RepoName's contributors" translates to
-          //     "/repos/OWNERNAME/REPONAME/contributors"
+          try {
+            // pulls the query from the request and runs it with GitHub's REST API
+            // check out https://docs.github.com/rest/reference/
+            //
+            // HINT: REST is organized by nesting topics. Figure out the biggest one first,
+            //     then drill down to what you care about
+            // "Owner's repo is named RepoName. Example: find RepoName's contributors" translates to
+            //     "/repos/OWNERNAME/REPONAME/contributors"
 
-          Map<String, String> query_pairs = new LinkedHashMap<String, String>();
-          query_pairs = splitQuery(request.replace("github?", ""));
-          String json = fetchURL("https://api.github.com/" + query_pairs.get("query"));
-          System.out.println(json);
+            Map<String, String> query_pairs = new LinkedHashMap<String, String>();
+            query_pairs = splitQuery(request.replace("github?", ""));
+            String json = fetchURL("https://api.github.com/" + query_pairs.get("query"));
+            System.out.println(json);
 
-          builder.append("HTTP/1.1 200 OK\n");
-          builder.append("Content-Type: text/html; charset=utf-8\n");
-          builder.append("\n");
-          builder.append("Check the todos mentioned in the Java source file");
-          // TODO: Parse the JSON returned by your fetch and create an appropriate
-          // response based on what the assignment document asks for
+            builder.append("HTTP/1.1 200 OK\n");
+            builder.append("Content-Type: text/html; charset=utf-8\n");
+            builder.append("\n");
 
+            JSONArray repos = new JSONArray(json);
+
+            if (repos.length() <= 0) {
+              builder.append("HTTP/1.1 400 Bad Request\n");
+              builder.append("Content-Type: text/html; charset=utf-8\n");
+              builder.append("\n");
+              builder.append("No repo data available");
+            } else {
+              builder.append(String.format("%-25s| %-10s| %-15s", "REPO FULL NAME", "REPO ID", "REPO OWNER"));
+              builder.append("\n");
+              for (int i = 0; i < repos.length(); i++) {
+                builder.append(String.format("%-25s| %-10d| %-15s",
+                        repos.getJSONObject(i).getString("full_name"),
+                        repos.getJSONObject(i).getInt("id"),
+                        repos.getJSONObject(i).getJSONObject("owner").getString("login")));
+                builder.append("\n");
+              }
+            }
+          } catch (JSONException nfs) {
+            builder.append("HTTP/1.1 400 Bad Request\n");
+            builder.append("Content-Type: text/html; charset=utf-8\n");
+            builder.append("\n");
+            builder.append("Invalid JSON Data Entered");
+          } catch (StringIndexOutOfBoundsException nfs) {
+            builder.append("HTTP/1.1 400 Bad Request\n");
+            builder.append("Content-Type: text/html; charset=utf-8\n");
+            builder.append("\n");
+            builder.append("Invalid query entered");
+          }
+
+        } else if (request.contains("reverse?")) {
+          // This reverses 2 strings
+          try {
+            Map<String, String> query_pairs = new LinkedHashMap<String, String>();
+            query_pairs = splitQuery(request.replace("reverse?", ""));
+
+            String str1 = query_pairs.get("str1");
+            String str2 = query_pairs.get("str2");
+
+            String reversed1 = new StringBuilder(str1).reverse().toString();
+            String reversed2 = new StringBuilder(str2).reverse().toString();
+
+            builder.append("string 1:");
+            builder.append(reversed1);
+            builder.append("\n");
+            builder.append("string 2:");
+            builder.append(reversed2);
+
+
+          } catch (IndexOutOfBoundsException nfs) {
+            builder.append("HTTP/1.1 400 Bad Request\n");
+            builder.append("Content-Type: text/html; charset=utf-8\n");
+            builder.append("\n");
+            builder.append("Unable to resolve input");
+          }
+          catch (Exception dfs) {
+            builder.append("HTTP/1.1 400 Bad Request\n");
+            builder.append("Content-Type: text/html; charset=utf-8\n");
+            builder.append("\n");
+            builder.append("Invalid query entered");
+          }
+
+        } else if (request.contains("larger?")) {
+          // determines which input is larger or if they're equal.
+          try {
+            Map<String, String> query_pairs = new LinkedHashMap<String, String>();
+            query_pairs = splitQuery(request.replace("larger?", ""));
+
+            Integer num1 = Integer.parseInt(query_pairs.get("num1"));
+            Integer num2 = Integer.parseInt(query_pairs.get("num2"));
+
+            Integer result = num1 - num2;
+            if (result > 0) {
+              builder.append("HTTP/1.1 200 OK\n");
+              builder.append("Content-Type: text/html; charset=utf-8\n");
+              builder.append("\n");
+              builder.append("num1 > num2");
+            } else if (result < 0) {
+              builder.append("HTTP/1.1 200 OK\n");
+              builder.append("Content-Type: text/html; charset=utf-8\n");
+              builder.append("\n");
+              builder.append("num1 < num2");
+            } else {
+              builder.append("HTTP/1.1 200 OK\n");
+              builder.append("Content-Type: text/html; charset=utf-8\n");
+              builder.append("\n");
+              builder.append("num1 = num2");
+            }
+
+          } catch (NumberFormatException nfs) {
+            builder.append("HTTP/1.1 406 Not Acceptable\n");
+            builder.append("Content-Type: text/html; charset=utf-8\n");
+            builder.append("\n");
+            builder.append("Invalid Data Entered");
+          } catch (IndexOutOfBoundsException nfs) {
+            builder.append("HTTP/1.1 400 Bad Request\n");
+            builder.append("Content-Type: text/html; charset=utf-8\n");
+            builder.append("\n");
+            builder.append("Unable to resolve input");
+          }
         } else {
           // if the request is not recognized at all
 
@@ -260,6 +375,7 @@ class WebServer {
 
   /**
    * Method to read in a query and split it up correctly
+   *
    * @param query parameters on path
    * @return Map of all parameters and their specific values
    * @throws UnsupportedEncodingException If the URLs aren't encoded with UTF-8
@@ -272,7 +388,7 @@ class WebServer {
     for (String pair : pairs) {
       int idx = pair.indexOf("=");
       query_pairs.put(URLDecoder.decode(pair.substring(0, idx), "UTF-8"),
-          URLDecoder.decode(pair.substring(idx + 1), "UTF-8"));
+              URLDecoder.decode(pair.substring(idx + 1), "UTF-8"));
     }
     // {{"q", "hello world/me"}, {"bob","5"}}
     return query_pairs;
@@ -280,6 +396,7 @@ class WebServer {
 
   /**
    * Builds an HTML file list from the www directory
+   *
    * @return HTML string output of file list
    */
   public static String buildFileList() {
@@ -326,14 +443,12 @@ class WebServer {
   }
 
   /**
-   *
    * a method to make a web request. Note that this method will block execution
    * for up to 20 seconds while the request is being satisfied. Better to use a
    * non-blocking request.
-   * 
+   *
    * @param aUrl the String indicating the query url for the OMDb api search
    * @return the String result of the http request.
-   *
    **/
   public String fetchURL(String aUrl) {
     StringBuilder sb = new StringBuilder();
